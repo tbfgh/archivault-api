@@ -51,8 +51,12 @@ else
 fi
 
 header "Step 5: Reload Nginx"
-nginx -t && systemctl reload nginx
-log "Nginx reloaded"
+if systemctl list-unit-files | grep -q '^nginx.service' && [ -f /etc/nginx/sites-enabled/archivault-api ]; then
+    nginx -t && systemctl reload nginx
+    log "Nginx reloaded"
+else
+    warn "Nginx not in use for this install (direct-expose mode) — skipping"
+fi
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════╗${NC}"

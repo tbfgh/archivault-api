@@ -14,9 +14,17 @@ class Settings(BaseSettings):
 
     # App
     APP_NAME: str = "ArchiveVault"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     ALLOWED_ORIGINS: str = "http://localhost:3000"
+
+    # Networking — separately configurable from the UI's host/port.
+    # BIND_HOST/API_PORT control where gunicorn/uvicorn listens.
+    # Keep BIND_HOST=127.0.0.1 when nginx is the public entrypoint (recommended).
+    # Set BIND_HOST=0.0.0.0 to expose the API directly without nginx
+    # (e.g. split-server setup with no domain/TLS yet).
+    BIND_HOST: str = "127.0.0.1"
+    API_PORT: int = 8000
 
     # SAS speed for retrieval estimates
     SAS_READ_SPEED_MBPS: float = 500.0
