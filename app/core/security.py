@@ -72,7 +72,7 @@ def get_current_admin(current_user=Depends(get_current_user)):
 
 
 def verify_indexer_token(token: str, db: Session) -> bool:
-    from app.models.indexer import IndexerToken
+    from app.models import IndexerToken
     record = db.query(IndexerToken).filter(
         IndexerToken.token == token,
         IndexerToken.is_active == True
