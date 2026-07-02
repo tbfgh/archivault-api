@@ -1,5 +1,14 @@
 # ArchiveVault API
 
+## What's new in v2
+
+- **Fixed `/docs`**: v1's nginx config proxied `/api/`, `/docs`, and `/health` as separate path rules, which silently broke `/openapi.json` (needed by the Swagger UI page) — it fell through to a catch-all and returned plain text instead of JSON. v2's nginx template proxies the whole API in a single `location /` block, so nothing gets shadowed.
+- **Configurable port, independent of the UI**: `API_PORT` and `BIND_HOST` are now settings in `.env` (defaults: `8000` / `127.0.0.1`). `setup.sh` prompts for the port and lets you choose between nginx-proxied (domain/IP on port 80/443) or direct-expose (no nginx, plain `host:port`) — useful when the API and UI live on separate machines.
+- **bcrypt pinned**: `requirements.txt` now pins `bcrypt==4.0.1` explicitly, avoiding the passlib crash that could happen when an unpinned install pulled bcrypt 4.1+.
+- App version bumped to `2.0.0`.
+
+---
+
 Backend service for ArchiveVault — indexes and tracks ex-employee data stored on offline SAS drives.
 
 ## Stack
