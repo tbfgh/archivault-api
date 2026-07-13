@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_visible_employee_ids
 from app.core.config import settings
 from app.models import FileIndex, Drive, ShelfLocation, Employee
 
@@ -22,18 +22,21 @@ def search_files(
 ):
     q = db.query(FileIndex)
 
-    # Employees can only see their own files
-    if current_user.role == "employee":
-        q = q.filter(FileIndex.employee_id == current_user.employee_id)
-    else:
-        if emp_code:
-            emp = db.query(Employee).filter(Employee.emp_code == emp_code).first()
-            if emp:
-                q = q.filter(FileIndex.employee_id == emp.id)
-        if drive_number:
-            drive = db.query(Drive).filter(Drive.drive_number == drive_number).first()
-            if drive:
-                q = q.filter(FileIndex.drive_id == drive.id)
+    # Restrict to whatever employees this user is allowed to see (own record
+    # for "employee" role, department-scoped set for "admin", unrestricted
+    # for "superadmin")
+    visible_ids = get_visible_employee_ids(current_user, db)
+    if visible_ids is not None:
+        q = q.filter(FileIndex.employee_id.in_(visible_ids))
+
+    if emp_code:
+        emp = db.query(Employee).filter(Employee.emp_code == emp_code).first()
+        if emp:
+            q = q.filter(FileIndex.employee_id == emp.id)
+    if drive_number:
+        drive = db.query(Drive).filter(Drive.drive_number == drive_number).first()
+        if drive:
+            q = q.filter(FileIndex.drive_id == drive.id)
 
     if search:
         q = q.filter(FileIndex.file_name.ilike(f"%{search}%"))
@@ -117,7 +120,8 @@ def get_file(
     if not f:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="File not found")
-    if current_user.role == "employee" and current_user.employee_id != f.employee_id:
+    visible_ids = get_visible_employee_ids(current_user, db)
+    if visible_ids is not None and f.employee_id not in visible_ids:
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Access denied")
 

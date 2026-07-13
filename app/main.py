@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1 import api_router
+from app.services import restore_service
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -28,6 +30,25 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.middleware("http")
+async def maintenance_mode_guard(request: Request, call_next):
+    """
+    While a restore is in progress, block every request except the backup/
+    restore admin endpoints themselves (so the frontend can keep polling
+    status) and /health. Everything else gets a clear 503 rather than
+    hitting a database mid-restore.
+    """
+    status = restore_service.get_status()
+    if status["state"] not in ("idle", "done", "error"):
+        path = request.url.path
+        if not path.startswith("/api/v1/admin/backup") and path != "/health":
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "System is restoring from backup. Please wait a moment and try again."},
+            )
+    return await call_next(request)
 
 
 @app.get("/")

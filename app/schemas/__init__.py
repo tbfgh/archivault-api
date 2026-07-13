@@ -49,6 +49,7 @@ class UserCreate(BaseModel):
     password: str
     role: UserRole = UserRole.employee
     employee_id: Optional[int] = None
+    department_ids: List[int] = []  # only meaningful when role == admin
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -75,7 +76,8 @@ class UserOut(BaseModel):
 class EmployeeCreate(BaseModel):
     emp_code: str
     full_name: str
-    department: Optional[str] = None
+    department: Optional[str] = None       # legacy string, kept as fallback
+    department_id: Optional[int] = None
     designation: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -85,7 +87,8 @@ class EmployeeCreate(BaseModel):
 
 class EmployeeUpdate(BaseModel):
     full_name: Optional[str] = None
-    department: Optional[str] = None
+    department: Optional[str] = None       # legacy string, kept as fallback
+    department_id: Optional[int] = None
     designation: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -98,7 +101,8 @@ class EmployeeOut(BaseModel):
     id: int
     emp_code: str
     full_name: str
-    department: Optional[str]
+    department: Optional[str]        # legacy string, kept as fallback display value
+    department_id: Optional[int]
     designation: Optional[str]
     email: Optional[str]
     date_joined: Optional[datetime]
@@ -109,6 +113,38 @@ class EmployeeOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ─── Department ───────────────────────────────────────────────────────────────
+
+class DepartmentCreate(BaseModel):
+    name: str
+    slug: str
+
+class DepartmentOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    employee_count: int
+    user_count: int
+
+class UserDepartmentAssign(BaseModel):
+    user_id: int
+    department_ids: List[int]
+
+class BatchOut(BaseModel):
+    session_id: int
+    drive_id: int
+    drive_number: Optional[str] = None
+    status: str
+    total_files: int
+    total_size_bytes: int
+    started_at: datetime
+    completed_at: Optional[datetime]
+
+class BatchBulkUpdate(BaseModel):
+    employee_id: Optional[int] = None
+    drive_id: Optional[int] = None
 
 
 # ─── Shelf Location ───────────────────────────────────────────────────────────

@@ -182,6 +182,7 @@ def upload_file_batch(
         file_objects.append(FileIndex(
             drive_id=session.drive_id,
             employee_id=emp_id,
+            session_id=session.id,
             file_name=fr.file_name,
             file_path=fr.file_path,
             file_extension=fr.file_extension,
