@@ -8,8 +8,8 @@ Create Date: 2026-07-04
 from alembic import op
 import sqlalchemy as sa
 
-revision = '0002_departments_and_batch_linking'
-down_revision = '0001_initial'
+revision = '0002_dept_batch_link'  # was '0002_departments_and_batch_linking' (34 chars, overflows VARCHAR(32))
+down_revision = '0002_dept_batch_link'
 branch_labels = None
 depends_on = None
 
