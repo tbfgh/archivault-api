@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '0002_dept_batch_link'  # was '0002_departments_and_batch_linking' (34 chars, overflows VARCHAR(32))
-down_revision = '0002_dept_batch_link'
+down_revision = '0001_dept_batch_link'
 branch_labels = None
 depends_on = None
 
