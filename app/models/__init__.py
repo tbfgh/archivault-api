@@ -1,11 +1,23 @@
 from sqlalchemy import (
     Column, Integer, String, BigInteger, Boolean,
-    DateTime, ForeignKey, Text, Float, Enum, JSON
+    DateTime, ForeignKey, Text, Float, Enum, JSON, Table
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
 import enum
+
+
+# ─── User ↔ Department (many-to-many) ─────────────────────────────────────────
+# A user (typically role="admin") can be scoped to one or more departments.
+# Superadmins bypass this entirely by role and are never assigned rows here.
+
+user_departments = Table(
+    "user_departments",
+    Base.metadata,
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("department_id", Integer, ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 # ─── Enums ────────────────────────────────────────────────────────────────────
@@ -54,6 +66,21 @@ class User(Base):
     employee = relationship("Employee", back_populates="user", foreign_keys=[employee_id])
     retrieval_requests = relationship("RetrievalRequest", back_populates="requested_by_user")
     audit_logs = relationship("AuditLog", back_populates="user")
+    departments = relationship("Department", secondary=user_departments, back_populates="users")
+
+
+# ─── Department ───────────────────────────────────────────────────────────────
+
+class Department(Base):
+    __tablename__ = "departments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    slug = Column(String(100), unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    users = relationship("User", secondary=user_departments, back_populates="departments")
+    employees = relationship("Employee", back_populates="department_rel")
 
 
 # ─── Employee ─────────────────────────────────────────────────────────────────
@@ -64,7 +91,8 @@ class Employee(Base):
     id = Column(Integer, primary_key=True, index=True)
     emp_code = Column(String(50), unique=True, index=True, nullable=False)
     full_name = Column(String(255), nullable=False, index=True)
-    department = Column(String(100), nullable=True)
+    department = Column(String(100), nullable=True)  # legacy string, kept as fallback display value
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True, index=True)
     designation = Column(String(100), nullable=True)
     email = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
@@ -79,6 +107,7 @@ class Employee(Base):
     drive_assignments = relationship("DriveEmployee", back_populates="employee")
     file_indexes = relationship("FileIndex", back_populates="employee")
     retrieval_requests = relationship("RetrievalRequest", back_populates="employee")
+    department_rel = relationship("Department", back_populates="employees")
 
 
 # ─── Drive ────────────────────────────────────────────────────────────────────
@@ -152,10 +181,12 @@ class FileIndex(Base):
     file_created_at = Column(DateTime(timezone=True), nullable=True)
     is_directory = Column(Boolean, default=False)
     depth_level = Column(Integer, default=0)
+    session_id = Column(Integer, ForeignKey("indexer_sessions.id"), nullable=True, index=True)
     indexed_at = Column(DateTime(timezone=True), server_default=func.now())
 
     drive = relationship("Drive", back_populates="file_indexes")
     employee = relationship("Employee", back_populates="file_indexes")
+    session = relationship("IndexerSession", back_populates="files")
 
 
 # ─── Indexer Token ────────────────────────────────────────────────────────────
@@ -193,6 +224,7 @@ class IndexerSession(Base):
 
     drive = relationship("Drive", back_populates="indexer_sessions")
     token = relationship("IndexerToken", back_populates="sessions")
+    files = relationship("FileIndex", back_populates="session")
 
 
 # ─── Retrieval Request ────────────────────────────────────────────────────────

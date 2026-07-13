@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
-from app.core.security import get_current_user, get_current_admin
+from app.core.security import get_current_user, get_current_admin, get_visible_employee_ids
 from app.models import Employee, DriveEmployee, FileIndex, Drive, ShelfLocation
 from app.schemas import EmployeeCreate, EmployeeUpdate, EmployeeOut
 
@@ -19,6 +19,11 @@ def list_employees(
     current_user=Depends(get_current_user)
 ):
     q = db.query(Employee)
+
+    visible_ids = get_visible_employee_ids(current_user, db)
+    if visible_ids is not None:
+        q = q.filter(Employee.id.in_(visible_ids))
+
     if search:
         q = q.filter(
             (Employee.full_name.ilike(f"%{search}%")) |
@@ -54,7 +59,8 @@ def get_employee(
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    if current_user.role == "employee" and current_user.employee_id != emp_id:
+    visible_ids = get_visible_employee_ids(current_user, db)
+    if visible_ids is not None and emp_id not in visible_ids:
         raise HTTPException(status_code=403, detail="Access denied")
     return emp
 
@@ -82,7 +88,8 @@ def get_employee_drives(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    if current_user.role == "employee" and current_user.employee_id != emp_id:
+    visible_ids = get_visible_employee_ids(current_user, db)
+    if visible_ids is not None and emp_id not in visible_ids:
         raise HTTPException(status_code=403, detail="Access denied")
     assignments = db.query(DriveEmployee).filter(DriveEmployee.employee_id == emp_id).all()
     result = []
@@ -117,7 +124,8 @@ def get_employee_files(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    if current_user.role == "employee" and current_user.employee_id != emp_id:
+    visible_ids = get_visible_employee_ids(current_user, db)
+    if visible_ids is not None and emp_id not in visible_ids:
         raise HTTPException(status_code=403, detail="Access denied")
 
     q = db.query(FileIndex).filter(FileIndex.employee_id == emp_id)

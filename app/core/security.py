@@ -71,6 +71,38 @@ def get_current_admin(current_user=Depends(get_current_user)):
     return current_user
 
 
+def get_current_superadmin(current_user=Depends(get_current_user)):
+    if current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Superadmin access required")
+    return current_user
+
+
+def get_visible_employee_ids(current_user, db: Session) -> Optional[list]:
+    """
+    Returns the list of employee_ids the current_user is allowed to see,
+    or None if they may see all employees without restriction.
+
+    - superadmin: None (no filtering)
+    - employee: only their own linked employee_id
+    - admin: employees belonging to any department the admin is assigned to.
+      An admin with no departments assigned sees nothing (safe default) rather
+      than silently seeing everyone.
+    """
+    from app.models import Employee
+
+    if current_user.role == "superadmin":
+        return None
+    if current_user.role == "employee":
+        return [current_user.employee_id] if current_user.employee_id else []
+
+    # admin
+    dept_ids = [d.id for d in current_user.departments]
+    if not dept_ids:
+        return []
+    rows = db.query(Employee.id).filter(Employee.department_id.in_(dept_ids)).all()
+    return [r[0] for r in rows]
+
+
 def verify_indexer_token(token: str, db: Session) -> bool:
     from app.models import IndexerToken
     record = db.query(IndexerToken).filter(

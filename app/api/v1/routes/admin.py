@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.core.database import get_db
 from app.core.security import get_current_admin, get_password_hash
-from app.models import User, Employee, Drive, FileIndex, RetrievalRequest, RequestStatus
+from app.models import User, Employee, Drive, FileIndex, RetrievalRequest, RequestStatus, Department, UserRole
 from app.schemas import UserCreate, UserUpdate, UserOut, AdminStats
 from typing import List
 
@@ -46,12 +46,20 @@ def create_user(
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    depts = []
+    if payload.role == UserRole.admin and payload.department_ids:
+        depts = db.query(Department).filter(Department.id.in_(payload.department_ids)).all()
+        if len(depts) != len(payload.department_ids):
+            raise HTTPException(status_code=400, detail="One or more department_ids are invalid")
+
     user = User(
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=get_password_hash(payload.password),
         role=payload.role,
-        employee_id=payload.employee_id
+        employee_id=payload.employee_id,
+        departments=depts,
     )
     db.add(user)
     db.commit()
