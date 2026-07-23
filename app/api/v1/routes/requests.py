@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, timezone
 from app.core.database import get_db
-from app.core.security import get_current_user, get_current_admin
+from app.core.security import get_current_user, get_current_admin, get_visible_employee_ids
 from app.core.config import settings
 from app.models import RetrievalRequest, FileIndex, Drive, RequestStatus
 from app.schemas import RetrievalRequestCreate, RetrievalRequestUpdate, RetrievalRequestOut
@@ -19,6 +19,12 @@ def list_requests(
     q = db.query(RetrievalRequest)
     if current_user.role == "employee":
         q = q.filter(RetrievalRequest.requested_by_id == current_user.id)
+    else:
+        # Department-scoped admins should only see requests for employees in
+        # their departments; superadmin (visible_ids is None) sees everything.
+        visible_ids = get_visible_employee_ids(current_user, db)
+        if visible_ids is not None:
+            q = q.filter(RetrievalRequest.employee_id.in_(visible_ids))
     return q.order_by(RetrievalRequest.requested_at.desc()).all()
 
 
@@ -68,6 +74,10 @@ def get_request(
         raise HTTPException(status_code=404, detail="Request not found")
     if current_user.role == "employee" and req.requested_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
+    if current_user.role == "admin":
+        visible_ids = get_visible_employee_ids(current_user, db)
+        if visible_ids is not None and req.employee_id not in visible_ids:
+            raise HTTPException(status_code=403, detail="Access denied")
     return req
 
 
@@ -81,6 +91,11 @@ def update_request_status(
     req = db.query(RetrievalRequest).filter(RetrievalRequest.id == req_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+
+    if current_user.role == "admin":
+        visible_ids = get_visible_employee_ids(current_user, db)
+        if visible_ids is not None and req.employee_id not in visible_ids:
+            raise HTTPException(status_code=403, detail="Access denied")
 
     req.status = payload.status
     if payload.admin_notes:

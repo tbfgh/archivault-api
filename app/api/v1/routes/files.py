@@ -86,7 +86,17 @@ def retrieval_estimate(
     current_user=Depends(get_current_user)
 ):
     ids = [int(i) for i in file_ids.split(",") if i.strip().isdigit()]
-    files = db.query(FileIndex).filter(FileIndex.id.in_(ids)).all()
+    q = db.query(FileIndex).filter(FileIndex.id.in_(ids))
+
+    # Same scoping as everywhere else: own record for "employee", department
+    # scope for "admin", unrestricted for "superadmin". Without this, any
+    # authenticated user could pull size/drive info for files outside their
+    # visibility by guessing/enumerating file_ids.
+    visible_ids = get_visible_employee_ids(current_user, db)
+    if visible_ids is not None:
+        q = q.filter(FileIndex.employee_id.in_(visible_ids))
+
+    files = q.all()
 
     total_bytes = sum(f.file_size_bytes for f in files)
     total_mb = total_bytes / (1024 * 1024)

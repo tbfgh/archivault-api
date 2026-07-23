@@ -42,7 +42,7 @@ def run_restore_from_path(archive_path: Path, cleanup_source: bool = False):
         write_status("extracting", "Unpacking backup archive")
         extract_dir.mkdir(exist_ok=True)
         with tarfile.open(archive_path) as tar:
-            tar.extractall(extract_dir)
+            tar.extractall(extract_dir, filter="data")
 
         manifest_path = extract_dir / "manifest.json"
         if not manifest_path.exists():
@@ -61,6 +61,7 @@ def run_restore_from_path(archive_path: Path, cleanup_source: bool = False):
                 "-h", db["host"],
                 "-p", db["port"],
                 "-d", db["dbname"],
+                "-v", "ON_ERROR_STOP=1",
                 "-f", str(sql_file),
             ],
             env={"PGPASSWORD": db["password"]},

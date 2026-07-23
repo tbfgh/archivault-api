@@ -57,6 +57,8 @@ def create_backup_archive(destination: Path | None = None) -> Path:
                 "-d", db["dbname"],
                 "-f", str(dump_path),
                 "--no-owner",
+                "--clean",
+                "--if-exists",
             ],
             env={"PGPASSWORD": db["password"]},
             capture_output=True, text=True,

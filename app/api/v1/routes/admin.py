@@ -47,6 +47,12 @@ def create_user(
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    if payload.role in (UserRole.admin, UserRole.superadmin) and current_user.role != UserRole.superadmin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only superadmins can create admin or superadmin accounts"
+        )
+
     depts = []
     if payload.role == UserRole.admin and payload.department_ids:
         depts = db.query(Department).filter(Department.id.in_(payload.department_ids)).all()
@@ -77,6 +83,13 @@ def update_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if current_user.role != UserRole.superadmin:
+        if user.role == UserRole.superadmin:
+            raise HTTPException(status_code=403, detail="Only superadmins can modify superadmin accounts")
+        if payload.role is not None and payload.role != user.role:
+            raise HTTPException(status_code=403, detail="Only superadmins can change user roles")
+
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
     db.commit()
