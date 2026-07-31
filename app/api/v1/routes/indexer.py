@@ -9,10 +9,11 @@ from app.core.database import get_db
 from app.core.security import get_current_admin, verify_indexer_token
 from app.models import (
     IndexerToken, IndexerSession, Drive, ShelfLocation,
-    Employee, DriveEmployee, FileIndex, SessionStatus
+    Employee, DriveEmployee, FileIndex, SessionStatus, DriveStatus
 )
 from app.schemas import (
     IndexerTokenCreate, IndexerTokenOut,
+    IndexerDriveOut, IndexerEmployeeOut,
     IndexerSessionStart, IndexerSessionStartResponse,
     IndexerFileBatch, IndexerSessionComplete
 )
@@ -75,6 +76,35 @@ def verify_token(
     return {"valid": True, "message": "Token is valid"}
 
 
+# ─── Selection Lists (Indexer token) ───────────────────────────────────────────
+# The Indexer tool no longer accepts free-text drive/employee details; it must
+# select from records that already exist in the system. These endpoints back
+# those selection dropdowns.
+
+@router.get("/drives", response_model=list[IndexerDriveOut])
+def list_indexer_drives(
+    token: str = Depends(get_token_from_header),
+    db: Session = Depends(get_db)
+):
+    if not verify_indexer_token(token, db):
+        raise HTTPException(status_code=401, detail="Invalid or inactive token")
+    return db.query(Drive).filter(
+        Drive.status == DriveStatus.active
+    ).order_by(Drive.drive_number).all()
+
+
+@router.get("/employees", response_model=list[IndexerEmployeeOut])
+def list_indexer_employees(
+    token: str = Depends(get_token_from_header),
+    db: Session = Depends(get_db)
+):
+    if not verify_indexer_token(token, db):
+        raise HTTPException(status_code=401, detail="Invalid or inactive token")
+    return db.query(Employee).filter(
+        Employee.is_active == True
+    ).order_by(Employee.full_name).all()
+
+
 # ─── Indexing Session ─────────────────────────────────────────────────────────
 
 @router.post("/session/start", response_model=IndexerSessionStartResponse)
@@ -91,48 +121,41 @@ def start_session(
 
     token_record.last_used_at = datetime.now(timezone.utc)
 
-    # Get or create drive
-    drive = db.query(Drive).filter(Drive.drive_number == payload.drive_number).first()
+    # Drive must already be registered (with shelf location) via the admin panel.
+    drive = db.query(Drive).filter(Drive.id == payload.drive_id).first()
     if not drive:
-        drive = Drive(
-            drive_number=payload.drive_number,
-            capacity_gb=payload.capacity_gb,
-            used_gb=0.0
+        raise HTTPException(
+            status_code=404,
+            detail="Drive not found. Register it in the admin panel before indexing."
         )
-        db.add(drive)
-        db.flush()
-
-    # Upsert shelf location
-    shelf = db.query(ShelfLocation).filter(ShelfLocation.drive_id == drive.id).first()
-    if shelf:
-        shelf.row_number = payload.shelf_row
-        shelf.shelf = payload.shelf_shelf
-        shelf.slot = payload.shelf_slot
-    else:
-        shelf = ShelfLocation(
-            drive_id=drive.id,
-            row_number=payload.shelf_row,
-            shelf=payload.shelf_shelf,
-            slot=payload.shelf_slot
+    if drive.status != DriveStatus.active:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Drive {drive.drive_number} is not active (status: {drive.status.value})."
         )
-        db.add(shelf)
 
-    # Ensure employees exist
+    if not payload.employees:
+        raise HTTPException(status_code=400, detail="At least one employee assignment is required")
+
+    # Employees must already exist — no auto-creation from indexer input.
     emp_map = {}
     for ep in payload.employees:
-        emp = db.query(Employee).filter(Employee.emp_code == ep.emp_code).first()
+        emp = db.query(Employee).filter(Employee.id == ep.employee_id).first()
         if not emp:
-            emp = Employee(emp_code=ep.emp_code, full_name=ep.full_name, department=ep.department)
-            db.add(emp)
-            db.flush()
-        emp_map[ep.emp_code] = emp.id
+            raise HTTPException(
+                status_code=404,
+                detail=f"Employee id {ep.employee_id} not found. Register them in the admin panel before indexing."
+            )
+        emp_map[str(emp.id)] = emp.id
 
-        # Upsert DriveEmployee
+        # Upsert DriveEmployee (folder path is the only thing the indexer supplies)
         de = db.query(DriveEmployee).filter(
             DriveEmployee.drive_id == drive.id,
             DriveEmployee.employee_id == emp.id
         ).first()
-        if not de:
+        if de:
+            de.folder_path = ep.folder_path
+        else:
             de = DriveEmployee(drive_id=drive.id, employee_id=emp.id, folder_path=ep.folder_path)
             db.add(de)
 
@@ -143,7 +166,7 @@ def start_session(
         drive_id=drive.id,
         token_id=token_record.id,
         status=SessionStatus.running,
-        employees_data={ep.emp_code: emp_map[ep.emp_code] for ep in payload.employees}
+        employees_data=emp_map
     )
     db.add(session)
     db.commit()
@@ -176,7 +199,7 @@ def upload_file_batch(
     file_objects = []
 
     for fr in payload.files:
-        emp_id = emp_map.get(fr.emp_code)
+        emp_id = emp_map.get(str(fr.employee_id))
         if not emp_id:
             continue
         file_objects.append(FileIndex(
@@ -228,7 +251,7 @@ def complete_session(
 
     # Update DriveEmployee totals
     emp_map = session.employees_data or {}
-    for emp_code, emp_id in emp_map.items():
+    for emp_id in set(emp_map.values()):
         count = db.query(FileIndex).filter(
             FileIndex.drive_id == session.drive_id,
             FileIndex.employee_id == emp_id
