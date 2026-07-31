@@ -252,19 +252,35 @@ class IndexerTokenOut(BaseModel):
     class Config:
         from_attributes = True
 
-class EmployeeIndexPayload(BaseModel):
+# Lightweight read models exposed to the Indexer tool (token-authenticated)
+# so it can populate selection dropdowns instead of accepting free text.
+class IndexerDriveOut(BaseModel):
+    id: int
+    drive_number: str
+    capacity_gb: float
+    used_gb: float
+    status: str
+    shelf_location: Optional[ShelfLocationOut]
+
+    class Config:
+        from_attributes = True
+
+class IndexerEmployeeOut(BaseModel):
+    id: int
     emp_code: str
     full_name: str
-    department: Optional[str] = None
+    department: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class IndexerEmployeeAssignment(BaseModel):
+    employee_id: int
     folder_path: str
 
 class IndexerSessionStart(BaseModel):
-    drive_number: str
-    capacity_gb: float
-    shelf_row: str
-    shelf_shelf: str
-    shelf_slot: str
-    employees: List[EmployeeIndexPayload]
+    drive_id: int
+    employees: List[IndexerEmployeeAssignment]
 
 class IndexerSessionStartResponse(BaseModel):
     session_key: str
@@ -280,7 +296,7 @@ class FileRecord(BaseModel):
     file_created_at: Optional[datetime]
     is_directory: bool
     depth_level: int
-    emp_code: str
+    employee_id: int
 
 class IndexerFileBatch(BaseModel):
     files: List[FileRecord]
