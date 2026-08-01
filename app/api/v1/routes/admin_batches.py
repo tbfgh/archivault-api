@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -73,7 +74,56 @@ def get_batch_files(
     }
 
 
-@router.put("/{session_id}/bulk-update")
+@router.delete("/{session_id}")
+def delete_batch(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_superadmin)
+):
+    session = db.query(IndexerSession).filter(IndexerSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    files_q = db.query(FileIndex).filter(FileIndex.session_id == session_id)
+    affected_pairs = {(f.drive_id, f.employee_id) for f in files_q.all()}
+    deleted_count = files_q.count()
+
+    files_q.delete(synchronize_session=False)
+
+    # Recompute DriveEmployee totals for anyone touched by this batch, from
+    # what's actually left in file_index — safer than subtracting, since a
+    # duplicate/overlapping batch may have re-indexed the same employee.
+    for drive_id, employee_id in affected_pairs:
+        de = db.query(DriveEmployee).filter(
+            DriveEmployee.drive_id == drive_id,
+            DriveEmployee.employee_id == employee_id
+        ).first()
+        if de:
+            remaining = db.query(FileIndex).filter(
+                FileIndex.drive_id == drive_id,
+                FileIndex.employee_id == employee_id,
+                FileIndex.is_directory == False
+            )
+            de.total_files = remaining.count()
+            de.total_size_bytes = db.query(func.sum(FileIndex.file_size_bytes)).filter(
+                FileIndex.drive_id == drive_id,
+                FileIndex.employee_id == employee_id,
+                FileIndex.is_directory == False
+            ).scalar() or 0
+
+    # Recompute the drive's used_gb from remaining files on it
+    drive = db.query(Drive).filter(Drive.id == session.drive_id).first()
+    if drive:
+        remaining_bytes = db.query(func.sum(FileIndex.file_size_bytes)).filter(
+            FileIndex.drive_id == drive.id,
+            FileIndex.is_directory == False
+        ).scalar() or 0
+        drive.used_gb = remaining_bytes / (1024 ** 3)
+
+    db.delete(session)
+    db.commit()
+
+    return {"session_id": session_id, "deleted_files": deleted_count}
 def bulk_update_batch(
     session_id: int,
     payload: BatchBulkUpdate,
