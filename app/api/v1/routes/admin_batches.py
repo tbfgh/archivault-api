@@ -5,7 +5,7 @@ from typing import List
 
 from app.core.database import get_db
 from app.core.security import get_current_superadmin
-from app.models import IndexerSession, FileIndex, Employee, Drive
+from app.models import IndexerSession, FileIndex, Employee, Drive, DriveEmployee
 from app.schemas import BatchOut, BatchBulkUpdate
 
 router = APIRouter(prefix="/admin/batches", tags=["Admin"])
@@ -124,6 +124,9 @@ def delete_batch(
     db.commit()
 
     return {"session_id": session_id, "deleted_files": deleted_count}
+
+
+@router.put("/{session_id}/bulk-update")
 def bulk_update_batch(
     session_id: int,
     payload: BatchBulkUpdate,

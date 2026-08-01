@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "ArchiveVault"
     APP_VERSION: str = "2.0.0"
+    # Shown in the admin panel footer alongside the version. Separate from
+    # APP_NAME so the product name and the operating company can differ.
+    COMPANY_NAME: str = "Ancode"
     DEBUG: bool = False
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
