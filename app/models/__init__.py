@@ -156,7 +156,10 @@ class DriveEmployee(Base):
     id = Column(Integer, primary_key=True, index=True)
     drive_id = Column(Integer, ForeignKey("drives.id"), nullable=False)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
-    folder_path = Column(String(1024), nullable=True)
+    # Text, not a capped String: same class of path-length risk as
+    # file_index.file_path (long UNC / deeply nested Windows paths).
+    # See migration 0003.
+    folder_path = Column(Text, nullable=True)
     total_files = Column(Integer, default=0)
     total_size_bytes = Column(BigInteger, default=0)
     indexed_at = Column(DateTime(timezone=True), nullable=True)
@@ -175,7 +178,10 @@ class FileIndex(Base):
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
     file_name = Column(String(512), nullable=False, index=True)
     file_path = Column(Text, nullable=False)
-    file_extension = Column(String(20), nullable=True, index=True)
+    # 255, not the original 20: an extension can never exceed its file name's
+    # length, and NTFS caps a file name component at 255 UTF-16 code units —
+    # so this is a hard upper bound, not a guess. See migration 0003.
+    file_extension = Column(String(255), nullable=True, index=True)
     file_size_bytes = Column(BigInteger, nullable=False)
     file_modified_at = Column(DateTime(timezone=True), nullable=True)
     file_created_at = Column(DateTime(timezone=True), nullable=True)

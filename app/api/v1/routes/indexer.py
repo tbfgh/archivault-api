@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
+from sqlalchemy.exc import DataError
 from typing import Optional
 import secrets
 import string
@@ -25,6 +26,36 @@ def get_token_from_header(x_indexer_token: Optional[str] = Header(None)) -> str:
     if not x_indexer_token:
         raise HTTPException(status_code=401, detail="Indexer token required")
     return x_indexer_token
+
+
+def _check_field_lengths(file_objects: list) -> None:
+    """
+    Pre-flight check against the model's *actual* column limits (read from
+    FileIndex.__table__ so this stays correct automatically if a column
+    width ever changes again) — so an oversized value is reported as a
+    clean 4xx naming the exact field/file, instead of surfacing as a bulk
+    insert failure with no indication of which of the batch's files it was.
+    This is a safety net for any future column, not a substitute for
+    sizing columns realistically in the first place (see migration 0003).
+    """
+    limits = {
+        col.name: col.type.length
+        for col in FileIndex.__table__.columns
+        if getattr(col.type, "length", None)
+    }
+    for obj in file_objects:
+        for field, limit in limits.items():
+            value = getattr(obj, field, None)
+            if isinstance(value, str) and len(value) > limit:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"File '{obj.file_path}' has a '{field}' value of "
+                        f"{len(value)} characters, which exceeds the column "
+                        f"limit of {limit}. No files from this batch were saved — "
+                        f"retry after excluding or fixing this entry."
+                    )
+                )
 
 
 # ─── Token Management (Admin only) ────────────────────────────────────────────
@@ -216,8 +247,25 @@ def upload_file_batch(
             depth_level=fr.depth_level
         ))
 
-    db.bulk_save_objects(file_objects)
-    db.commit()
+    _check_field_lengths(file_objects)
+
+    try:
+        db.bulk_save_objects(file_objects)
+        db.commit()
+    except DataError as e:
+        db.rollback()
+        # Safety net for anything _check_field_lengths didn't anticipate
+        # (e.g. a column this endpoint doesn't know about yet). Not expected
+        # to trigger in normal operation now that columns are sized
+        # realistically (migration 0003) and the pre-flight check above
+        # catches the common case.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "This batch could not be saved — one or more files have a "
+                f"field value too large for the database: {e.orig}"
+            )
+        )
 
     return {"inserted": len(file_objects), "message": "Batch saved"}
 
