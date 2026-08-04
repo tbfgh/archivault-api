@@ -118,3 +118,7 @@ See `.env.example` for all options. Key ones:
 | `SECRET_KEY` | JWT signing key — keep secret |
 | `SAS_READ_SPEED_MBPS` | Used to calculate retrieval time estimates (default 500) |
 | `ALLOWED_ORIGINS` | Comma-separated frontend URLs for CORS |
+
+## License
+
+GPL-3.0. Copyright (C) 2026 Ittisal. Developed by Ali.
